@@ -1,3 +1,32 @@
-import { eq, sql } from "drizzle-orm"; import { AdminPanel } from "@/components/admin-panel"; import { db } from "@/lib/db"; import { characterTranslations, characters, users } from "@/lib/db/schema"; import { getSession } from "@/lib/session"; import { redirect } from "next/navigation";
+import { AdminPanel } from "@/components/admin-panel";
+import { getSession } from "@/lib/session";
+import { redirect } from "next/navigation";
+
 export const dynamic = "force-dynamic";
-export default async function AdminPage({ params }: PageProps<"/[locale]/admin">) { const { locale } = await params; const session = await getSession(); if (!session || session.user.role !== "admin") redirect(`/${locale}`); const [{ count: userCount }] = await db.select({ count: sql<number>`count(*)::int` }).from(users); const [{ count: characterCount }] = await db.select({ count: sql<number>`count(*)::int` }).from(characters); const pending = await db.select({ id: characters.id, slug: characters.slug, name: characterTranslations.name, owner: users.email }).from(characters).innerJoin(users, eq(users.id, characters.ownerId)).leftJoin(characterTranslations, eq(characterTranslations.characterId, characters.id)).where(eq(characters.status, "pending_review")); return <main className="dashboard-page"><div className="dashboard-heading"><p className="eyebrow">Lorelia Control Room</p><h1>{locale === "vi" ? "Quản trị hệ thống" : "System administration"}</h1></div><div className="metric-grid"><div><strong>{userCount}</strong><span>Users</span></div><div><strong>{characterCount}</strong><span>Characters</span></div><div><strong>{pending.length}</strong><span>Pending</span></div></div><AdminPanel pending={pending} locale={locale}/></main>; }
+
+export default async function AdminPage({
+  params,
+}: PageProps<"/[locale]/admin">) {
+  const { locale } = await params;
+  const session = await getSession();
+
+  if (!session || session.user.role !== "admin") {
+    redirect(`/${locale}`);
+  }
+
+  return (
+    <main className="dashboard-page admin-full-page">
+      <div className="dashboard-heading">
+        <p className="eyebrow">Lorelia Control Room</p>
+        <h1>{locale === "vi" ? "Trung tâm Quản trị Hệ thống" : "System Control Center"}</h1>
+        <p>
+          {locale === "vi"
+            ? "Quản lý toàn diện người dùng, kiểm duyệt nhân vật, cấu hình AI và gói cước."
+            : "Comprehensive management of users, character moderation, AI models, and subscriptions."}
+        </p>
+      </div>
+
+      <AdminPanel locale={locale} />
+    </main>
+  );
+}
