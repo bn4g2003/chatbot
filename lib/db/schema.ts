@@ -603,6 +603,30 @@ export const characterRelations = relations(characters, ({ many, one }) => ({
   persona: one(characterPersonas),
   stats: one(characterStats),
 }));
+export const characterTranslationRelations = relations(characterTranslations, ({ one }) => ({
+  character: one(characters, {
+    fields: [characterTranslations.characterId],
+    references: [characters.id],
+  }),
+}));
+export const characterImageRelations = relations(characterImages, ({ one }) => ({
+  character: one(characters, {
+    fields: [characterImages.characterId],
+    references: [characters.id],
+  }),
+}));
+export const characterPersonaRelations = relations(characterPersonas, ({ one }) => ({
+  character: one(characters, {
+    fields: [characterPersonas.characterId],
+    references: [characters.id],
+  }),
+}));
+export const characterStatsRelations = relations(characterStats, ({ one }) => ({
+  character: one(characters, {
+    fields: [characterStats.characterId],
+    references: [characters.id],
+  }),
+}));
 export const characterScenarioRelations = relations(characterScenarios, ({ one, many }) => ({
   character: one(characters, {
     fields: [characterScenarios.characterId],

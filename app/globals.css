@@ -232,10 +232,12 @@
 .admin-editor-content textarea{min-height:130px}
 .admin-persona-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 18px}
 .admin-persona-grid textarea{min-height:115px}
+.admin-scenario-list{display:grid;gap:15px}.admin-scenario-editor{padding:20px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.scenario-editor-head{display:grid;grid-template-columns:38px minmax(0,1fr) auto 34px;gap:10px;align-items:center;margin-bottom:15px}.scenario-editor-head>span{width:34px;height:34px;display:grid;place-items:center;border-radius:8px;background:var(--text);color:var(--bg);font-size:11px;font-weight:800}.scenario-editor-head>input{font-weight:800}.scenario-editor-head .checkbox-label{margin:0;text-transform:none}.scenario-editor-head>button{height:34px;border:1px solid var(--line);border-radius:8px;background:transparent;color:#ef4444;font-size:19px;cursor:pointer}.scenario-editor-head>button:disabled{opacity:.3;cursor:not-allowed}.admin-scenario-editor textarea{min-height:86px}.admin-scenario-editor .opening-message-field{min-height:140px;border-left:3px solid var(--accent)}
 .admin-image-row{display:grid;grid-template-columns:120px minmax(0,1fr) 38px;gap:9px;margin-bottom:9px}
 .admin-image-row button{border:1px solid var(--line);border-radius:9px;background:transparent;color:#ef4444;cursor:pointer;font-size:20px}
 @media(max-width:900px){.admin-editor-layout{grid-template-columns:1fr}.admin-editor-summary{position:static;display:none}.admin-persona-grid{grid-template-columns:1fr}}
-@media(max-width:560px){.admin-editor-page{padding:22px 15px 70px}.admin-editor-header{align-items:flex-start;flex-direction:column}.admin-editor-header .primary-button{width:100%;justify-content:center}.admin-image-row{grid-template-columns:1fr 38px}.admin-image-row select{grid-column:1/-1}}
+@media(max-width:560px){.admin-editor-page{padding:22px 15px 70px}.admin-editor-header{align-items:flex-start;flex-direction:column}.admin-editor-header .primary-button{width:100%;justify-content:center}.admin-image-row{grid-template-columns:1fr 38px}.admin-image-row select{grid-column:1/-1}.scenario-editor-head{grid-template-columns:38px 1fr 34px}.scenario-editor-head .checkbox-label{grid-column:2/3}}
 @media(max-width:600px){
   .admin-metric-cards{grid-template-columns:1fr}
   .plans-grid{grid-template-columns:1fr}

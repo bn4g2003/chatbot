@@ -40,6 +40,10 @@ export function AdminCharacterEditor({ locale, characterId }: { locale: string; 
       slug: data.slug, originalLocale: data.originalLocale, status: data.status, rating: data.rating, featured: data.featured,
       translation, persona: Object.fromEntries(personaFields.map((field) => [field, data.persona?.[field] || ""])),
       images: data.images.map((image: any) => ({ url: image.url, type: image.type, altText: image.altText || "" })),
+      scenarios: data.scenarios.map((scenario: any) => ({
+        id: scenario.id, active: scenario.active,
+        translation: scenario.translations.find((item: any) => item.locale === data.originalLocale) || scenario.translations[0],
+      })),
     }) });
     const result = await response.json();
     setNotice(response.ok ? (locale === "vi" ? "Đã lưu và ghi vào lịch sử kiểm duyệt." : "Saved and added to moderation history.") : result.error);
@@ -71,6 +75,19 @@ export function AdminCharacterEditor({ locale, characterId }: { locale: string; 
           <label>Description<textarea value={translation.description} onChange={(e) => update(`translations.${translationIndex}.description`, e.target.value)} /></label><label>Biography<textarea value={translation.biography} onChange={(e) => update(`translations.${translationIndex}.biography`, e.target.value)} /></label>
         </section>
         <section className="admin-card"><div className="card-top"><div><p className="eyebrow">Roleplay engine</p><h3>Persona & canon</h3></div></div><div className="admin-persona-grid">{personaFields.map((field) => <label key={field}>{field.replace(/[A-Z]/g, (m) => ` ${m.toLowerCase()}`)}<textarea value={data.persona?.[field] || ""} onChange={(e) => update(`persona.${field}`, e.target.value)} /></label>)}</div></section>
+        <section className="admin-card"><div className="card-top"><div><p className="eyebrow">Story entry points</p><h3>{locale === "vi" ? "Bối cảnh câu chuyện" : "Story scenarios"}</h3><small>{locale === "vi" ? "Mỗi nhân vật cần ít nhất một bối cảnh. Bối cảnh đã dùng trong chat chỉ được vô hiệu hóa, không bị xóa khỏi lịch sử." : "Every character needs at least one scenario. Used scenarios are deactivated, never removed from chat history."}</small></div><button className="secondary-button" onClick={() => setData({ ...data, scenarios: [...data.scenarios, { active: true, translations: [{ locale: data.originalLocale, title: "", description: "", location: "", time: "", userRole: "", relationship: "", goal: "", openingMessage: "" }] }] })}>+ {locale === "vi" ? "Thêm bối cảnh" : "Add scenario"}</button></div>
+          <div className="admin-scenario-list">{data.scenarios.map((scenario: any, scenarioIndex: number) => {
+            const scenarioTranslationIndex = Math.max(0, scenario.translations.findIndex((item: any) => item.locale === data.originalLocale));
+            const item = scenario.translations[scenarioTranslationIndex];
+            const base = `scenarios.${scenarioIndex}`; const trans = `${base}.translations.${scenarioTranslationIndex}`;
+            return <article className="admin-scenario-editor" key={scenario.id || scenarioIndex}>
+              <div className="scenario-editor-head"><span>{String(scenarioIndex + 1).padStart(2, "0")}</span><input value={item.title} placeholder={locale === "vi" ? "Tên bối cảnh" : "Scenario title"} onChange={(e) => update(`${trans}.title`, e.target.value)} /><label className="checkbox-label"><input type="checkbox" checked={scenario.active} onChange={(e) => update(`${base}.active`, e.target.checked)} /> Active</label><button disabled={data.scenarios.length === 1} onClick={() => setData({ ...data, scenarios: data.scenarios.filter((_: any, index: number) => index !== scenarioIndex) })}>×</button></div>
+              <label>Description<textarea value={item.description} onChange={(e) => update(`${trans}.description`, e.target.value)} /></label>
+              <div className="form-grid"><label>Location<input value={item.location} onChange={(e) => update(`${trans}.location`, e.target.value)} /></label><label>Time<input value={item.time} onChange={(e) => update(`${trans}.time`, e.target.value)} /></label><label>User role<input value={item.userRole} onChange={(e) => update(`${trans}.userRole`, e.target.value)} /></label><label>Relationship<input value={item.relationship} onChange={(e) => update(`${trans}.relationship`, e.target.value)} /></label></div>
+              <label>Story goal<textarea value={item.goal} onChange={(e) => update(`${trans}.goal`, e.target.value)} /></label><label>Opening message<textarea className="opening-message-field" value={item.openingMessage} onChange={(e) => update(`${trans}.openingMessage`, e.target.value)} /></label>
+            </article>;
+          })}</div>
+        </section>
         <section className="admin-card"><div className="card-top"><div><p className="eyebrow">URL assets</p><h3>{locale === "vi" ? "Hình ảnh nhân vật" : "Character images"}</h3></div><ImageIcon /></div>{data.images.map((image: any, index: number) => <div className="admin-image-row" key={image.id || index}><select value={image.type} onChange={(e) => update(`images.${index}.type`, e.target.value)}><option value="avatar">avatar</option><option value="cover">cover</option><option value="gallery">gallery</option></select><input value={image.url} onChange={(e) => update(`images.${index}.url`, e.target.value)} /><button onClick={() => setData({ ...data, images: data.images.filter((_: any, i: number) => i !== index) })}>×</button></div>)}<button className="secondary-button" onClick={() => setData({ ...data, images: [...data.images, { type: "gallery", url: "", altText: "" }] })}>+ URL</button></section>
       </div>
     </div>

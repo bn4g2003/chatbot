@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { characterImages, characterPersonas, characterReviews, characters, characterTranslations } from "@/lib/db/schema";
+import { characterImages, characterPersonas, characterReviews, characterScenarios, characters, characterTranslations, scenarioTranslations } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/session";
 
 const patchCharacterSchema = z.object({
@@ -29,6 +29,14 @@ const editorSchema = z.object({
     knowledge: z.string(), unknowns: z.string(), boundaries: z.string(), exampleDialogue: z.string(),
   }),
   images: z.array(z.object({ url: z.string().url().startsWith("https://").max(2048), type: z.enum(["avatar", "cover", "gallery"]), altText: z.string().max(200).optional() })).max(20),
+  scenarios: z.array(z.object({
+    id: z.string().uuid().optional(), active: z.boolean().default(true),
+    translation: z.object({
+      locale: z.enum(["vi", "en"]), title: z.string().min(1).max(150), description: z.string().min(1).max(2000),
+      location: z.string().min(1).max(300), time: z.string().min(1).max(300), userRole: z.string().min(1).max(500),
+      relationship: z.string().min(1).max(500), goal: z.string().min(1).max(1000), openingMessage: z.string().min(1).max(5000),
+    }),
+  })).min(1).max(30),
 });
 
 export async function GET(_request: Request, route: { params: Promise<{ id: string }> }) {
@@ -64,6 +72,23 @@ export async function PUT(request: Request, route: { params: Promise<{ id: strin
       else await tx.insert(characterPersonas).values({ characterId: id, ...input.persona });
       await tx.delete(characterImages).where(eq(characterImages.characterId, id));
       if (input.images.length) await tx.insert(characterImages).values(input.images.map((image, index) => ({ characterId: id, ...image, sortOrder: index })));
+      const existingScenarios = await tx.query.characterScenarios.findMany({ where: eq(characterScenarios.characterId, id) });
+      const retainedIds = new Set(input.scenarios.flatMap((scenario) => scenario.id ? [scenario.id] : []));
+      for (const oldScenario of existingScenarios) {
+        if (!retainedIds.has(oldScenario.id)) await tx.update(characterScenarios).set({ active: false, updatedAt: new Date() }).where(eq(characterScenarios.id, oldScenario.id));
+      }
+      for (const [index, scenario] of input.scenarios.entries()) {
+        let scenarioId = scenario.id;
+        if (scenarioId && existingScenarios.some((item) => item.id === scenarioId)) {
+          await tx.update(characterScenarios).set({ active: scenario.active, sortOrder: index, updatedAt: new Date() }).where(eq(characterScenarios.id, scenarioId));
+        } else {
+          const [created] = await tx.insert(characterScenarios).values({ characterId: id, active: scenario.active, sortOrder: index }).returning({ id: characterScenarios.id });
+          scenarioId = created.id;
+        }
+        const existingScenarioTranslation = await tx.query.scenarioTranslations.findFirst({ where: eq(scenarioTranslations.scenarioId, scenarioId) });
+        if (existingScenarioTranslation) await tx.update(scenarioTranslations).set({ ...scenario.translation, updatedAt: new Date() }).where(eq(scenarioTranslations.id, existingScenarioTranslation.id));
+        else await tx.insert(scenarioTranslations).values({ scenarioId, ...scenario.translation });
+      }
       await tx.insert(characterReviews).values({ characterId: id, reviewerId: adminSession.user.id, decision: "edited", note: "Character content updated by administrator" });
     });
     return Response.json({ success: true });
