@@ -1,0 +1,4 @@
+import { asc } from "drizzle-orm"; import { z } from "zod"; import { db } from "@/lib/db"; import { banners } from "@/lib/db/schema"; import { requireAdmin } from "@/lib/session"; import { httpsImageUrl } from "@/lib/validation";
+const schema = z.object({ imageUrl: httpsImageUrl, href: z.string().url().max(2048).optional(), title: z.string().min(2).max(200), locale: z.enum(["vi", "en"]).optional(), active: z.boolean().default(true), sortOrder: z.number().int().default(0) });
+export async function GET() { return Response.json({ banners: await db.select().from(banners).orderBy(asc(banners.sortOrder)) }); }
+export async function POST(request: Request) { try { await requireAdmin(); const [row] = await db.insert(banners).values(schema.parse(await request.json())).returning(); return Response.json(row, { status: 201 }); } catch { return Response.json({ error: "Forbidden or invalid" }, { status: 403 }); } }

@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1786684121075,
+      "tag": "0000_loving_vindicator",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786689459509,
+      "tag": "0001_furry_apocalypse",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786690403447,
+      "tag": "0002_melodic_maestro",
+      "breakpoints": true
+    }
+  ]
+}

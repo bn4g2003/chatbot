@@ -1,0 +1,3 @@
+import { CreatorForm } from "@/components/creator-form"; import { getSession } from "@/lib/session"; import { redirect } from "next/navigation";
+export const dynamic = "force-dynamic";
+export default async function CreatorPage({ params }: PageProps<"/[locale]/creator">) { const { locale } = await params; if (!await getSession()) redirect(`/${locale}/auth`); return <main className="dashboard-page wide"><div className="dashboard-heading"><p className="eyebrow">Creator Studio</p><h1>{locale === "vi" ? "Tạo một linh hồn mới" : "Create a new soul"}</h1><p>{locale === "vi" ? "Điền càng cụ thể, nhân vật nhập vai càng tự nhiên và nhất quán." : "The more detail you provide, the more natural and consistent the roleplay."}</p></div><CreatorForm locale={locale}/></main>; }

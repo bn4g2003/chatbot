@@ -1,0 +1,2 @@
+import { AuthForm } from "@/components/auth-form";
+export default async function AuthPage({ params }: PageProps<"/[locale]/auth">) { const { locale } = await params; return <main className="center-page"><section className="auth-intro"><span className="brand-mark large">L</span><p className="eyebrow">Lorelia</p><h1>{locale === "vi" ? "Câu chuyện đang chờ bạn." : "Your story is waiting."}</h1><p>{locale === "vi" ? "Đăng nhập để bắt đầu và lưu lại mọi cuộc phiêu lưu." : "Sign in to begin and preserve every adventure."}</p></section><AuthForm locale={locale}/></main>; }

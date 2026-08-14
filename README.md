@@ -1,36 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lorelia
 
-## Getting Started
+Lorelia is a multilingual roleplay platform for discovering and chatting with story characters. Character canon, persona, scenarios, and conversation memory are assembled directly into prompts without embeddings.
 
-First, run the development server:
+## Local setup
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. Keep `.env` for local development, or copy `.env.example` and change every secret.
+2. Set `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `BETTER_AUTH_SECRET`, and `CREDENTIAL_ENCRYPTION_KEY`. Add Google OAuth variables when needed.
+3. Run `npm run db:up`, `npm run db:migrate`, then `npm run db:seed`.
+4. Run `npm run dev` and open `http://localhost:3000` or `http://localhost:3000/en`.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Use `GET /api/health` to verify PostgreSQL. The seed creates the initial admin, plans, categories, Gemini model record, and an example character. Change the seeded admin password immediately.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+AI keys are encrypted in PostgreSQL. A personal key takes priority and does not consume quota; otherwise the system key is used and one successful response consumes one monthly message. Configure the system key from `/vi/admin`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Character and banner images are HTTPS URLs only. Lorelia has no upload endpoint and never downloads or copies remote files.
 
-## Learn More
+## Main areas
 
-To learn more about Next.js, take a look at the following resources:
+- `/vi` and `/en`: discovery, search, trending, most-viewed, and new characters.
+- `/[locale]/characters/[slug]`: character profile and scenario selection.
+- `/[locale]/creator`: structured persona/scenario editor with URL image previews.
+- `/[locale]/settings`: quota and personal Gemini key.
+- `/[locale]/admin`: review queue, metrics, and system Gemini key.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Commands
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `npm run db:generate`: generate a migration after schema changes.
+- `npm run db:migrate`: apply committed migrations.
+- `npm run db:seed`: idempotently seed required data and admin.
+- `npm test`: prompt and context behavior tests.
+- `npm run lint` / `npm run build`: production verification.
 
-## Deploy on Vercel
+## Adding an AI model
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Add its metadata in `lib/ai/models.ts` and the database model catalog. For a new provider, implement `StreamingAiClient` and register the adapter in `lib/ai/index.ts`.
