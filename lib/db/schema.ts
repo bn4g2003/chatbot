@@ -347,6 +347,17 @@ export const characterTags = pgTable(
   (t) => [primaryKey({ columns: [t.characterId, t.tagId] })],
 );
 
+export type CustomScenario = {
+  title: string;
+  description: string;
+  location: string;
+  time: string;
+  userRole: string;
+  relationship: string;
+  goal: string;
+  openingMessage: string;
+};
+
 export const conversations = pgTable(
   "conversations",
   {
@@ -364,6 +375,7 @@ export const conversations = pgTable(
     title: text("title"),
     userPreferredName: text("user_preferred_name"),
     preferredAddress: text("preferred_address"),
+    customScenario: jsonb("custom_scenario").$type<CustomScenario>(),
     generating: boolean("generating").default(false).notNull(),
     promptVersion: integer("prompt_version").default(1).notNull(),
     ...timestamps,

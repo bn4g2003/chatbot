@@ -139,6 +139,7 @@ export async function POST(request: Request) {
         { error: "Character or scenario not found" },
         { status: 404 },
       );
+    const scenario = input.customScenario ?? context.scenarioTranslation;
     const [conversation] = await db
       .insert(conversations)
       .values({
@@ -146,7 +147,8 @@ export async function POST(request: Request) {
         characterId: input.characterId,
         scenarioId: input.scenarioId,
         locale: input.locale,
-        title: context.scenarioTranslation.title,
+        title: scenario.title,
+        customScenario: input.customScenario ?? null,
         userPreferredName: input.userPreferredName || null,
         preferredAddress: input.preferredAddress || null,
       })
@@ -156,15 +158,15 @@ export async function POST(request: Request) {
       .values({
         conversationId: conversation.id,
         role: "assistant",
-        content: context.scenarioTranslation.openingMessage,
+        content: scenario.openingMessage,
       });
     await db
       .insert(conversationStoryStates)
       .values({
         conversationId: conversation.id,
-        currentLocation: context.scenarioTranslation.location,
-        currentTime: context.scenarioTranslation.time,
-        openThreads: [context.scenarioTranslation.goal],
+        currentLocation: scenario.location,
+        currentTime: scenario.time,
+        openThreads: [scenario.goal],
       });
     return Response.json({ id: conversation.id }, { status: 201 });
   } catch (error) {

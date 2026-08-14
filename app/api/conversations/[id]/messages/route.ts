@@ -120,6 +120,7 @@ export async function POST(
         { status: 422 },
       );
     }
+    const scenario = conversation.customScenario ?? character.scenarioTranslation;
     const [userMessage] = await db
       .insert(messages)
       .values({ conversationId: id, role: "user", content: input.content })
@@ -171,9 +172,9 @@ export async function POST(
           trust: 0,
           affinity: 0,
           conflict: 0,
-          currentLocation: character.scenarioTranslation.location,
-          currentTime: character.scenarioTranslation.time,
-          openThreads: [character.scenarioTranslation.goal],
+          currentLocation: scenario.location,
+          currentTime: scenario.time,
+          openThreads: [scenario.goal],
           establishedFacts: [],
           lastTransitionTurn: 0,
           calmTurns: 0,
@@ -185,7 +186,7 @@ export async function POST(
         client,
         state: storyState,
         recentMessages: history,
-        scenarioGoal: character.scenarioTranslation.goal,
+        scenarioGoal: scenario.goal,
       });
     } catch {
       storyDirection = holdDirection(
@@ -198,7 +199,7 @@ export async function POST(
       locale: conversation.locale,
       biography: character.translation.biography,
       persona: character.persona,
-      scenario: character.scenarioTranslation,
+      scenario,
       memory: memory?.summary,
       userPreferredName: conversation.userPreferredName,
       preferredAddress: conversation.preferredAddress,

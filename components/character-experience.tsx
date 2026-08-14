@@ -29,6 +29,11 @@ type PastConversation = {
   lastMessage?: { role: string; content: string; createdAt: string } | null;
 };
 
+const emptyCustomScenario = {
+  title: "", description: "", location: "", time: "", userRole: "",
+  relationship: "", goal: "", openingMessage: "",
+};
+
 export function CharacterExperience({
   characterId,
   characterSlug,
@@ -51,6 +56,7 @@ export function CharacterExperience({
   const [activeConvId, setActiveConvId] = useState<string | undefined>(conversationId);
   const [pastConversations, setPastConversations] = useState<PastConversation[]>([]);
   const [selectedScenario, setSelectedScenario] = useState(scenarios[0]?.id ?? "");
+  const [customScenario, setCustomScenario] = useState(emptyCustomScenario);
   const [preferredName, setPreferredName] = useState("");
   const [preferredAddress, setPreferredAddress] = useState("");
   const [busy, setBusy] = useState(false);
@@ -99,7 +105,8 @@ export function CharacterExperience({
       if (!response.ok) return;
       const data = await response.json();
       if (data.conversation) {
-        setSelectedScenario(data.conversation.scenarioId);
+        setSelectedScenario(data.conversation.customScenario ? "custom" : data.conversation.scenarioId);
+        if (data.conversation.customScenario) setCustomScenario(data.conversation.customScenario);
         setPreferredName(data.conversation.userPreferredName ?? "");
         setPreferredAddress(data.conversation.preferredAddress ?? "");
       }
@@ -117,7 +124,7 @@ export function CharacterExperience({
   }
 
   async function startConversation() {
-    if (!requireLogin() || !selectedScenario) return;
+    if (!requireLogin() || !selectedScenario || (selectedScenario === "custom" && !scenarios[0]?.id)) return;
     setBusy(true);
     setNotice("");
     try {
@@ -126,7 +133,8 @@ export function CharacterExperience({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           characterId,
-          scenarioId: selectedScenario,
+          scenarioId: selectedScenario === "custom" ? scenarios[0].id : selectedScenario,
+          customScenario: selectedScenario === "custom" ? customScenario : undefined,
           locale,
           userPreferredName: preferredName || undefined,
           preferredAddress: preferredAddress || undefined,
@@ -208,6 +216,7 @@ export function CharacterExperience({
     setActiveConvId(undefined);
     setPreferredName("");
     setPreferredAddress("");
+    setCustomScenario(emptyCustomScenario);
     router.replace(`/${locale}/characters/${characterSlug}`);
   }
 
@@ -295,16 +304,32 @@ export function CharacterExperience({
                   {scenario.translation?.title}
                 </option>
               ))}
+              <option value="custom">{vi ? "Tự tạo bối cảnh riêng…" : "Create a private scenario…"}</option>
             </select>
           </label>
 
-          {selectedScenario && (
+          {selectedScenario && selectedScenario !== "custom" && (
             <p className="scenario-description">
               {
                 scenarios.find((scenario) => scenario.id === selectedScenario)
                   ?.translation?.description
               }
             </p>
+          )}
+
+          {selectedScenario === "custom" && (
+            <div className="custom-scenario-form">
+              <div className="custom-scenario-note">
+                <Sparkles /><span>{vi ? "Chỉ bạn nhìn thấy bối cảnh này. Nó được lưu riêng trong cuộc trò chuyện và không sửa nội dung gốc của nhân vật." : "Only you can see this scenario. It is stored with your conversation and does not change the public character."}</span>
+              </div>
+              <label><span>{vi ? "Tên bối cảnh" : "Scenario title"}</span><input maxLength={120} value={customScenario.title} onChange={(e) => setCustomScenario({ ...customScenario, title: e.target.value })} placeholder={vi ? "Ví dụ: Cuộc gặp trên chuyến tàu đêm" : "Example: A meeting on the night train"} /></label>
+              <label><span>{vi ? "Tình huống mở đầu" : "Opening situation"}</span><textarea maxLength={4000} value={customScenario.description} onChange={(e) => setCustomScenario({ ...customScenario, description: e.target.value })} /></label>
+              <div className="custom-scenario-grid"><label><span>{vi ? "Địa điểm" : "Location"}</span><input maxLength={500} value={customScenario.location} onChange={(e) => setCustomScenario({ ...customScenario, location: e.target.value })} /></label><label><span>{vi ? "Thời gian" : "Time"}</span><input maxLength={500} value={customScenario.time} onChange={(e) => setCustomScenario({ ...customScenario, time: e.target.value })} /></label></div>
+              <label><span>{vi ? "Vai trò của bạn" : "Your role"}</span><input maxLength={1000} value={customScenario.userRole} onChange={(e) => setCustomScenario({ ...customScenario, userRole: e.target.value })} /></label>
+              <label><span>{vi ? "Quan hệ với nhân vật" : "Relationship"}</span><input maxLength={1000} value={customScenario.relationship} onChange={(e) => setCustomScenario({ ...customScenario, relationship: e.target.value })} /></label>
+              <label><span>{vi ? "Mục tiêu/mạch truyện ban đầu" : "Initial story goal"}</span><textarea maxLength={2000} value={customScenario.goal} onChange={(e) => setCustomScenario({ ...customScenario, goal: e.target.value })} /></label>
+              <label><span>{vi ? "Lời mở đầu của nhân vật" : "Character opening message"}</span><textarea className="custom-opening-message" maxLength={6000} value={customScenario.openingMessage} onChange={(e) => setCustomScenario({ ...customScenario, openingMessage: e.target.value })} /></label>
+            </div>
           )}
 
           {/* User Address Preferences */}

@@ -11,12 +11,24 @@ export const httpsImageUrl = z
     "Must be an HTTPS image URL or a local path starting with /",
   );
 
+export const customScenarioSchema = z.object({
+  title: z.string().trim().min(2).max(120),
+  description: z.string().trim().min(10).max(4000),
+  location: z.string().trim().min(2).max(500),
+  time: z.string().trim().min(2).max(500),
+  userRole: z.string().trim().min(2).max(1000),
+  relationship: z.string().trim().min(2).max(1000),
+  goal: z.string().trim().min(2).max(2000),
+  openingMessage: z.string().trim().min(10).max(6000),
+});
+
 export const createConversationSchema = z.object({
   characterId: z.string().uuid(),
   scenarioId: z.string().uuid(),
   locale: z.enum(["vi", "en"]),
   userPreferredName: z.string().trim().max(80).optional(),
   preferredAddress: z.string().trim().max(200).optional(),
+  customScenario: customScenarioSchema.optional(),
 });
 
 export const sendMessageSchema = z.object({
@@ -53,14 +65,5 @@ export const createCharacterSchema = z.object({
   unknowns: z.string().trim().min(2).max(6000),
   boundaries: z.string().trim().min(2).max(4000),
   exampleDialogue: z.string().trim().min(10).max(6000),
-  scenario: z.object({
-    title: z.string().min(2).max(120),
-    description: z.string().min(10).max(4000),
-    location: z.string().min(2).max(500),
-    time: z.string().min(2).max(500),
-    userRole: z.string().min(2).max(1000),
-    relationship: z.string().min(2).max(1000),
-    goal: z.string().min(2).max(2000),
-    openingMessage: z.string().min(10).max(6000),
-  }),
+  scenario: customScenarioSchema,
 });
