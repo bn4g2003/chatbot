@@ -1,6 +1,15 @@
 "use client";
 
-import { MessageCircle, Save, Sparkles } from "lucide-react";
+import {
+  Clock,
+  History,
+  MessageCircle,
+  Plus,
+  RotateCcw,
+  Save,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/lib/auth-client";
@@ -9,6 +18,15 @@ import { ChatRoom } from "./chat-room";
 type Scenario = {
   id: string;
   translation?: { title: string; description: string; openingMessage: string };
+};
+
+type PastConversation = {
+  id: string;
+  title: string;
+  scenarioId: string;
+  messageCount: number;
+  updatedAt: string;
+  lastMessage?: { role: string; content: string; createdAt: string } | null;
 };
 
 export function CharacterExperience({
@@ -29,28 +47,66 @@ export function CharacterExperience({
   const { data, isPending } = useSession();
   const router = useRouter();
   const vi = locale === "vi";
-  const [selected, setSelected] = useState(scenarios[0]?.id ?? "");
+
+  const [activeConvId, setActiveConvId] = useState<string | undefined>(conversationId);
+  const [pastConversations, setPastConversations] = useState<PastConversation[]>([]);
+  const [selectedScenario, setSelectedScenario] = useState(scenarios[0]?.id ?? "");
   const [preferredName, setPreferredName] = useState("");
   const [preferredAddress, setPreferredAddress] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [isStartingNew, setIsStartingNew] = useState(false);
 
+  // Sync activeConvId when prop changes
   useEffect(() => {
-    if (!conversationId) return;
+    setActiveConvId(conversationId);
+  }, [conversationId]);
+
+  // Load user's conversations with this character
+  useEffect(() => {
+    if (!data?.user) return;
+    loadUserConversations();
+  }, [data?.user, characterId]);
+
+  async function loadUserConversations() {
+    try {
+      const res = await fetch(`/api/conversations?characterId=${characterId}`);
+      if (res.ok) {
+        const json = await res.json();
+        const convs: PastConversation[] = json.conversations || [];
+        setPastConversations(convs);
+
+        // Auto-resume latest conversation if none is specified in URL and user hasn't explicitly clicked "start new"
+        if (!conversationId && !isStartingNew && convs.length > 0) {
+          const latest = convs[0];
+          setActiveConvId(latest.id);
+          router.replace(`/${locale}/characters/${characterSlug}?chat=${latest.id}`);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  // Load active conversation preferences
+  useEffect(() => {
+    if (!activeConvId) return;
     const controller = new AbortController();
     async function loadPreferences() {
-      const response = await fetch(`/api/conversations/${conversationId}`, {
+      const response = await fetch(`/api/conversations/${activeConvId}`, {
         signal: controller.signal,
       });
       if (!response.ok) return;
       const data = await response.json();
-      setSelected(data.conversation.scenarioId);
-      setPreferredName(data.conversation.userPreferredName ?? "");
-      setPreferredAddress(data.conversation.preferredAddress ?? "");
+      if (data.conversation) {
+        setSelectedScenario(data.conversation.scenarioId);
+        setPreferredName(data.conversation.userPreferredName ?? "");
+        setPreferredAddress(data.conversation.preferredAddress ?? "");
+      }
     }
     void loadPreferences();
     return () => controller.abort();
-  }, [conversationId]);
+  }, [activeConvId]);
 
   function requireLogin() {
     if (!data && !isPending) {
@@ -61,32 +117,42 @@ export function CharacterExperience({
   }
 
   async function startConversation() {
-    if (!requireLogin() || !selected) return;
+    if (!requireLogin() || !selectedScenario) return;
     setBusy(true);
     setNotice("");
-    const response = await fetch("/api/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        characterId,
-        scenarioId: selected,
-        locale,
-        userPreferredName: preferredName || undefined,
-        preferredAddress: preferredAddress || undefined,
-      }),
-    });
-    const body = await response.json();
-    setBusy(false);
-    if (response.ok)
-      router.push(`/${locale}/characters/${characterSlug}?chat=${body.id}`);
-    else setNotice(body.error ?? "Error");
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          characterId,
+          scenarioId: selectedScenario,
+          locale,
+          userPreferredName: preferredName || undefined,
+          preferredAddress: preferredAddress || undefined,
+        }),
+      });
+      const body = await response.json();
+      setBusy(false);
+      if (response.ok) {
+        setIsStartingNew(false);
+        setActiveConvId(body.id);
+        router.push(`/${locale}/characters/${characterSlug}?chat=${body.id}`);
+        loadUserConversations();
+      } else {
+        setNotice(body.error ?? "Error creating conversation");
+      }
+    } catch (e: any) {
+      setBusy(false);
+      setNotice(e.message);
+    }
   }
 
   async function savePreferences() {
-    if (!conversationId || !requireLogin()) return;
+    if (!activeConvId || !requireLogin()) return;
     setBusy(true);
     setNotice("");
-    const response = await fetch(`/api/conversations/${conversationId}`, {
+    const response = await fetch(`/api/conversations/${activeConvId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -106,6 +172,45 @@ export function CharacterExperience({
     );
   }
 
+  async function deleteConversation(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (
+      !confirm(
+        vi
+          ? "Bạn có chắc muốn xóa cuộc trò chuyện này?"
+          : "Are you sure you want to delete this conversation?"
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        if (activeConvId === id) {
+          setActiveConvId(undefined);
+          router.replace(`/${locale}/characters/${characterSlug}`);
+        }
+        loadUserConversations();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function switchToConversation(id: string) {
+    setIsStartingNew(false);
+    setActiveConvId(id);
+    router.push(`/${locale}/characters/${characterSlug}?chat=${id}`);
+  }
+
+  function handleStartNewClick() {
+    setIsStartingNew(true);
+    setActiveConvId(undefined);
+    setPreferredName("");
+    setPreferredAddress("");
+    router.replace(`/${locale}/characters/${characterSlug}`);
+  }
+
   return (
     <section className="character-experience">
       <div className="experience-heading">
@@ -120,41 +225,70 @@ export function CharacterExperience({
         </h2>
         <p>
           {vi
-            ? "Thiết lập câu chuyện ở bên phải rồi bắt đầu trò chuyện ngay tại đây."
-            : "Set up the story on the right, then chat here."}
+            ? "Đoạn hội thoại được lưu tự động theo tài khoản của bạn. Bạn có thể tiếp tục bất cứ lúc nào."
+            : "Conversations are saved automatically. You can resume anytime."}
         </p>
       </div>
+
       <div className="experience-grid">
+        {/* Main Chat Area */}
         <div className="experience-chat">
-          {conversationId ? (
-            <ChatRoom conversationId={conversationId} locale={locale} />
+          {activeConvId ? (
+            <ChatRoom conversationId={activeConvId} locale={locale} />
           ) : (
             <div className="chat-empty">
               <MessageCircle />
               <h3>
                 {vi
-                  ? "Cuộc trò chuyện chưa bắt đầu"
-                  : "The conversation has not started"}
+                  ? "Bắt đầu cuộc trò chuyện mới"
+                  : "Start a new conversation"}
               </h3>
               <p>
                 {vi
-                  ? "Chọn bối cảnh và cách xưng hô. Lời mở đầu của nhân vật sẽ xuất hiện tại đây."
-                  : "Choose a scenario and form of address. The opening message will appear here."}
+                  ? "Chọn bối cảnh câu chuyện và cách xưng hô ở bên phải, sau đó nhấn nút Bắt đầu trò chuyện."
+                  : "Choose a scenario and preferred address on the right, then click Start chatting."}
               </p>
+              <button
+                className="primary-button"
+                style={{ marginTop: "16px" }}
+                disabled={busy}
+                onClick={startConversation}
+              >
+                <MessageCircle />
+                {busy ? "…" : vi ? "Bắt đầu ngay" : "Start Chat"}
+              </button>
             </div>
           )}
         </div>
+
+        {/* Right Settings & History Sidebar */}
         <aside className="experience-settings">
-          <p className="eyebrow">
-            {vi ? "Thiết lập cá nhân" : "Personal setup"}
-          </p>
-          <h3>{vi ? "Câu chuyện của bạn" : "Your story"}</h3>
+          {/* Action to Start New or View Current */}
+          <div className="sidebar-header-row">
+            <div>
+              <p className="eyebrow">
+                {vi ? "Thiết lập cá nhân" : "Personal setup"}
+              </p>
+              <h3>{vi ? "Câu chuyện của bạn" : "Your story"}</h3>
+            </div>
+            {activeConvId && (
+              <button
+                className="new-chat-btn"
+                title={vi ? "Tạo cuộc trò chuyện mới" : "Start new chat"}
+                onClick={handleStartNewClick}
+              >
+                <Plus /> {vi ? "Mới" : "New"}
+              </button>
+            )}
+          </div>
+
+          {/* Scenario Picker */}
           <label>
-            {vi ? "Bối cảnh mở đầu" : "Opening scenario"}
+            <span>{vi ? "Bối cảnh mở đầu:" : "Opening scenario:"}</span>
             <select
-              value={selected}
-              onChange={(event) => setSelected(event.target.value)}
-              disabled={Boolean(conversationId)}
+              value={selectedScenario}
+              onChange={(event) => setSelectedScenario(event.target.value)}
+              disabled={Boolean(activeConvId)}
             >
               {scenarios.map((scenario) => (
                 <option key={scenario.id} value={scenario.id}>
@@ -163,16 +297,19 @@ export function CharacterExperience({
               ))}
             </select>
           </label>
-          {selected && (
+
+          {selectedScenario && (
             <p className="scenario-description">
               {
-                scenarios.find((scenario) => scenario.id === selected)
+                scenarios.find((scenario) => scenario.id === selectedScenario)
                   ?.translation?.description
               }
             </p>
           )}
+
+          {/* User Address Preferences */}
           <label>
-            {vi ? "Tên nhân vật sẽ gọi bạn" : "Name the character calls you"}
+            <span>{vi ? "Tên nhân vật sẽ gọi bạn:" : "Name the character calls you:"}</span>
             <input
               value={preferredName}
               onChange={(event) => setPreferredName(event.target.value)}
@@ -180,8 +317,9 @@ export function CharacterExperience({
               placeholder={vi ? "Ví dụ: Minh" : "Example: Alex"}
             />
           </label>
+
           <label>
-            {vi ? "Cách xưng hô riêng" : "Preferred form of address"}
+            <span>{vi ? "Cách xưng hô riêng:" : "Preferred form of address:"}</span>
             <textarea
               value={preferredAddress}
               onChange={(event) => setPreferredAddress(event.target.value)}
@@ -193,25 +331,63 @@ export function CharacterExperience({
               }
             />
           </label>
+
           {notice && <p className="settings-notice">{notice}</p>}
-          {conversationId ? (
+
+          {activeConvId ? (
             <button
               className="primary-button settings-action"
               disabled={busy}
               onClick={savePreferences}
             >
               <Save />
-              {busy ? "…" : vi ? "Lưu thiết lập" : "Save settings"}
+              {busy ? "…" : vi ? "Lưu thiết lập xưng hô" : "Save settings"}
             </button>
           ) : (
             <button
               className="primary-button settings-action"
-              disabled={busy || !selected}
+              disabled={busy || !selectedScenario}
               onClick={startConversation}
             >
               <MessageCircle />
               {busy ? "…" : vi ? "Bắt đầu trò chuyện" : "Start chatting"}
             </button>
+          )}
+
+          {/* Past Conversation Sessions with this character */}
+          {pastConversations.length > 0 && (
+            <div className="past-sessions-section">
+              <div className="past-sessions-header">
+                <History />
+                <span>{vi ? "Lịch sử cuộc trò chuyện" : "Past sessions"}</span>
+              </div>
+              <div className="past-sessions-list">
+                {pastConversations.map((conv) => {
+                  const isCurrent = conv.id === activeConvId;
+                  return (
+                    <div
+                      key={conv.id}
+                      className={`past-session-item ${isCurrent ? "active" : ""}`}
+                      onClick={() => switchToConversation(conv.id)}
+                    >
+                      <div className="past-session-info">
+                        <strong>{conv.title || "Cuộc trò chuyện"}</strong>
+                        <small>
+                          <Clock /> {new Date(conv.updatedAt).toLocaleDateString()} • {conv.messageCount} {vi ? "tin nhắn" : "msgs"}
+                        </small>
+                      </div>
+                      <button
+                        className="delete-conv-btn"
+                        title={vi ? "Xóa cuộc trò chuyện này" : "Delete session"}
+                        onClick={(e) => deleteConversation(conv.id, e)}
+                      >
+                        <Trash2 />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </aside>
       </div>

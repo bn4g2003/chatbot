@@ -7,6 +7,9 @@ import {
   messages,
 } from "@/lib/db/schema";
 import { requireSession } from "@/lib/session";
+
+export const dynamic = "force-dynamic";
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> },
@@ -37,9 +40,10 @@ export async function GET(
 }
 
 const preferencesSchema = z.object({
-  userPreferredName: z.string().trim().max(80),
-  preferredAddress: z.string().trim().max(200),
+  userPreferredName: z.string().trim().max(80).optional(),
+  preferredAddress: z.string().trim().max(200).optional(),
 });
+
 export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -67,5 +71,30 @@ export async function PATCH(
       : Response.json({ error: "Not found" }, { status: 404 });
   } catch {
     return Response.json({ error: "Invalid request" }, { status: 400 });
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const session = await requireSession();
+    const { id } = await context.params;
+    const [deleted] = await db
+      .delete(conversations)
+      .where(
+        and(
+          eq(conversations.id, id),
+          eq(conversations.userId, session.user.id),
+        ),
+      )
+      .returning();
+    if (!deleted) {
+      return Response.json({ error: "Not found" }, { status: 404 });
+    }
+    return Response.json({ success: true, message: "Conversation deleted" });
+  } catch {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 }
