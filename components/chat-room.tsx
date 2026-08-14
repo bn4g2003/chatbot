@@ -41,8 +41,28 @@ export function ChatRoom({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const abort = useRef<AbortController | null>(null);
-  const end = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const userScrolledUp = useRef<boolean>(false);
   const vi = locale === "vi";
+
+  // Scroll ONLY the message list container, NEVER the window or page viewport
+  function scrollToBottom(smooth = false) {
+    if (!listRef.current) return;
+    const container = listRef.current;
+    if (smooth) {
+      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    } else {
+      container.scrollTop = container.scrollHeight;
+    }
+  }
+
+  function handleScroll() {
+    if (!listRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = listRef.current;
+    // If distance from bottom is > 100px, user is reading history
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    userScrolledUp.current = !isNearBottom;
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -53,24 +73,31 @@ export function ChatRoom({
       if (!response.ok) return;
       const data = await response.json();
       setMessages(data.messages ?? []);
+      userScrolledUp.current = false;
+      setTimeout(() => scrollToBottom(false), 50);
     }
     void loadConversation();
     return () => controller.abort();
   }, [conversationId]);
 
+  // When new tokens arrive during streaming, scroll internally within message box only
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: "smooth" });
+    if (!userScrolledUp.current) {
+      scrollToBottom(false);
+    }
   }, [messages]);
 
   async function send() {
     const content = text.trim();
     if (!content || busy) return;
     setText("");
+    userScrolledUp.current = false;
     setMessages((current) => [
       ...current,
       { role: "user", content },
       { role: "assistant", content: "" },
     ]);
+    setTimeout(() => scrollToBottom(true), 30);
     setBusy(true);
     abort.current = new AbortController();
     try {
@@ -131,7 +158,11 @@ export function ChatRoom({
           ? "Chữ nghiêng là hành động và bối cảnh · Chữ thường là lời thoại"
           : "Italic text is action and context · Regular text is dialogue"}
       </div>
-      <div className="message-list">
+      <div
+        className="message-list"
+        ref={listRef}
+        onScroll={handleScroll}
+      >
         {messages.map((message, index) => (
           <div className={`message ${message.role}`} key={message.id ?? index}>
             <span>
@@ -144,7 +175,6 @@ export function ChatRoom({
             )}
           </div>
         ))}
-        <div ref={end} />
       </div>
       <div className="composer">
         <textarea

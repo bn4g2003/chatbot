@@ -2,6 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
+  aiUsageLogs,
   conversationStoryStates,
   conversations,
   messages,
@@ -34,8 +35,11 @@ export async function GET(
       where: eq(conversationStoryStates.conversationId, id),
     });
     return Response.json({ conversation, messages: history, storyState });
-  } catch {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error: any) {
+    if (error?.message === "UNAUTHORIZED") {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return Response.json({ error: error.message || "Failed" }, { status: 500 });
   }
 }
 
@@ -69,8 +73,11 @@ export async function PATCH(
     return conversation
       ? Response.json(conversation)
       : Response.json({ error: "Not found" }, { status: 404 });
-  } catch {
-    return Response.json({ error: "Invalid request" }, { status: 400 });
+  } catch (error: any) {
+    if (error?.message === "UNAUTHORIZED") {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return Response.json({ error: error.message || "Invalid request" }, { status: 400 });
   }
 }
 
@@ -81,6 +88,25 @@ export async function DELETE(
   try {
     const session = await requireSession();
     const { id } = await context.params;
+
+    // Check conversation exists and belongs to user
+    const conv = await db.query.conversations.findFirst({
+      where: and(
+        eq(conversations.id, id),
+        eq(conversations.userId, session.user.id),
+      ),
+    });
+
+    if (!conv) {
+      return Response.json({ error: "Conversation not found" }, { status: 404 });
+    }
+
+    // Disconnect aiUsageLogs foreign key before deletion
+    await db
+      .update(aiUsageLogs)
+      .set({ conversationId: null })
+      .where(eq(aiUsageLogs.conversationId, id));
+
     const [deleted] = await db
       .delete(conversations)
       .where(
@@ -90,11 +116,16 @@ export async function DELETE(
         ),
       )
       .returning();
-    if (!deleted) {
-      return Response.json({ error: "Not found" }, { status: 404 });
-    }
+
     return Response.json({ success: true, message: "Conversation deleted" });
-  } catch {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error: any) {
+    console.error("Delete conversation error:", error);
+    if (error?.message === "UNAUTHORIZED") {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return Response.json(
+      { error: error.message || "Failed to delete conversation" },
+      { status: 500 }
+    );
   }
 }
