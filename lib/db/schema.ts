@@ -603,3 +603,16 @@ export const characterRelations = relations(characters, ({ many, one }) => ({
   persona: one(characterPersonas),
   stats: one(characterStats),
 }));
+export const characterScenarioRelations = relations(characterScenarios, ({ one, many }) => ({
+  character: one(characters, {
+    fields: [characterScenarios.characterId],
+    references: [characters.id],
+  }),
+  translations: many(scenarioTranslations),
+}));
+export const scenarioTranslationRelations = relations(scenarioTranslations, ({ one }) => ({
+  scenario: one(characterScenarios, {
+    fields: [scenarioTranslations.scenarioId],
+    references: [characterScenarios.id],
+  }),
+}));

@@ -827,6 +827,12 @@ function CharactersTab({
                     </td>
                     <td className="text-right">
                       <div className="action-buttons">
+                        <Link
+                          className="edit-character-btn"
+                          href={`/${locale}/admin/characters/${c.id}`}
+                        >
+                          <Settings /> {locale === "vi" ? "Chỉnh sửa" : "Edit"}
+                        </Link>
                         <button
                           className="preview-btn"
                           onClick={() => setPreviewChar(c)}
