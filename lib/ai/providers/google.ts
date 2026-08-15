@@ -16,13 +16,25 @@ export function createGoogleClient(apiKey: string, modelId: string): StreamingAi
       const response = await client.models.generateContent({
         model: modelId,
         contents: toGoogleContents(input.messages),
-        config: { systemInstruction: input.system },
+        config: {
+          systemInstruction: input.system,
+          temperature: input.temperature,
+          maxOutputTokens: input.maxOutputTokens,
+        },
       });
       if (!response.text) throw new Error("The AI model returned an empty response");
       return response.text;
     },
     async *streamText(input: GenerateTextInput) {
-      const stream = await client.models.generateContentStream({ model: modelId, contents: toGoogleContents(input.messages), config: { systemInstruction: input.system } });
+      const stream = await client.models.generateContentStream({
+        model: modelId,
+        contents: toGoogleContents(input.messages),
+        config: {
+          systemInstruction: input.system,
+          temperature: input.temperature,
+          maxOutputTokens: input.maxOutputTokens,
+        },
+      });
       for await (const chunk of stream) if (chunk.text) yield chunk.text;
     },
   };

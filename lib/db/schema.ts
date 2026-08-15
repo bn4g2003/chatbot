@@ -566,6 +566,27 @@ export const bookmarks = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.characterId] })],
 );
 
+export const characterComments = pgTable(
+  "character_comments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    characterId: uuid("character_id")
+      .notNull()
+      .references(() => characters.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    content: text("content").notNull(),
+    rating: integer("rating").default(5).notNull(),
+    likesCount: integer("likes_count").default(0).notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    index("character_comments_character_idx").on(t.characterId, t.createdAt),
+    index("character_comments_user_idx").on(t.userId),
+  ],
+);
+
 export const characterReviews = pgTable("character_reviews", {
   id: uuid("id").defaultRandom().primaryKey(),
   characterId: uuid("character_id")

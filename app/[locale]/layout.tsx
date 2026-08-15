@@ -3,11 +3,25 @@ import { setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
 
-export function generateStaticParams() { return routing.locales.map((locale) => ({ locale })); }
-export default async function LocaleLayout({ children, params }: LayoutProps<"/[locale]">) {
+export function generateStaticParams() {
+  return routing.locales.map((locale) => ({ locale }));
+}
+
+export default async function LocaleLayout({
+  children,
+  params,
+}: LayoutProps<"/[locale]">) {
   const { locale } = await params;
   if (!hasLocale(routing.locales, locale)) notFound();
   setRequestLocale(locale);
-  return <NextIntlClientProvider><Header locale={locale} />{children}</NextIntlClientProvider>;
+
+  return (
+    <NextIntlClientProvider>
+      <Header locale={locale} />
+      {children}
+      <Footer locale={locale} />
+    </NextIntlClientProvider>
+  );
 }

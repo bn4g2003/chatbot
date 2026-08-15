@@ -114,7 +114,7 @@ export function UserChatList({ locale }: { locale: string }) {
           const charName = conv.character?.name || "Character";
           const avatarUrl = conv.character?.avatarUrl;
           const destination = charSlug
-            ? `/${locale}/characters/${charSlug}?chat=${conv.id}`
+            ? `/${locale}/characters/${charSlug}/chat?chat=${conv.id}`
             : `/${locale}/chat/${conv.id}`;
 
           return (

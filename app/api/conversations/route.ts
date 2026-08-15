@@ -9,8 +9,13 @@ import {
   conversations,
   messages,
   scenarioTranslations,
+  storyEvents,
 } from "@/lib/db/schema";
 import { requireSession } from "@/lib/session";
+import {
+  createInitialStoryState,
+  storyStateColumns,
+} from "@/lib/story-director";
 import { createConversationSchema } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -140,6 +145,12 @@ export async function POST(request: Request) {
         { status: 404 },
       );
     const scenario = input.customScenario ?? context.scenarioTranslation;
+    const initialStoryState = createInitialStoryState({
+      scenarioGoal: scenario.goal,
+      scenarioDescription: scenario.description,
+      location: scenario.location,
+      time: scenario.time,
+    });
     const [conversation] = await db
       .insert(conversations)
       .values({
@@ -164,10 +175,17 @@ export async function POST(request: Request) {
       .insert(conversationStoryStates)
       .values({
         conversationId: conversation.id,
-        currentLocation: scenario.location,
-        currentTime: scenario.time,
-        openThreads: [scenario.goal],
+        ...storyStateColumns(initialStoryState),
       });
+    await db.insert(storyEvents).values({
+      conversationId: conversation.id,
+      decision: "hold",
+      confidence: 1,
+      reason: "Initial story beat created from the selected scenario.",
+      signals: [],
+      stateBefore: initialStoryState,
+      stateAfter: initialStoryState,
+    });
     return Response.json({ id: conversation.id }, { status: 201 });
   } catch (error) {
     return Response.json(

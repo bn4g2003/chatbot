@@ -1,7 +1,7 @@
 "use client";
 
-import { Send, Square } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ArrowDown, Send, Square } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 type Message = {
   id?: string;
@@ -33,13 +33,20 @@ function RoleplayContent({ content }: { content: string }) {
 export function ChatRoom({
   conversationId,
   locale,
+  characterName = "Lorelia",
+  immersive = false,
+  conversationIntro,
 }: {
   conversationId: string;
   locale: string;
+  characterName?: string;
+  immersive?: boolean;
+  conversationIntro?: ReactNode;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef<boolean>(false);
@@ -62,19 +69,27 @@ export function ChatRoom({
     // If distance from bottom is > 100px, user is reading history
     const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
     userScrolledUp.current = !isNearBottom;
+    setShowJumpToLatest(!isNearBottom);
   }
 
   useEffect(() => {
     const controller = new AbortController();
     async function loadConversation() {
-      const response = await fetch(`/api/conversations/${conversationId}`, {
-        signal: controller.signal,
-      });
-      if (!response.ok) return;
-      const data = await response.json();
-      setMessages(data.messages ?? []);
-      userScrolledUp.current = false;
-      setTimeout(() => scrollToBottom(false), 50);
+      try {
+        const response = await fetch(`/api/conversations/${conversationId}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        setMessages(data.messages ?? []);
+        userScrolledUp.current = false;
+        setShowJumpToLatest(false);
+        setTimeout(() => scrollToBottom(false), 50);
+      } catch (error: unknown) {
+        if (!(error instanceof Error && error.name === "AbortError")) {
+          console.error("Failed to load conversation:", error);
+        }
+      }
     }
     void loadConversation();
     return () => controller.abort();
@@ -92,6 +107,7 @@ export function ChatRoom({
     if (!content || busy) return;
     setText("");
     userScrolledUp.current = false;
+    setShowJumpToLatest(false);
     setMessages((current) => [
       ...current,
       { role: "user", content },
@@ -152,7 +168,7 @@ export function ChatRoom({
   }
 
   return (
-    <div className="chat-shell embedded-chat">
+    <div className={`chat-shell embedded-chat ${immersive ? "immersive-chat" : ""}`}>
       <div className="chat-format-hint">
         {vi
           ? "Chữ nghiêng là hành động và bối cảnh · Chữ thường là lời thoại"
@@ -162,11 +178,13 @@ export function ChatRoom({
         className="message-list"
         ref={listRef}
         onScroll={handleScroll}
+        aria-live="polite"
       >
+        {conversationIntro}
         {messages.map((message, index) => (
           <div className={`message ${message.role}`} key={message.id ?? index}>
             <span>
-              {message.role === "user" ? (vi ? "Bạn" : "You") : "Lorelia"}
+              {message.role === "user" ? (vi ? "Bạn" : "You") : characterName}
             </span>
             {message.role === "assistant" ? (
               <RoleplayContent content={message.content || "…"} />
@@ -176,27 +194,48 @@ export function ChatRoom({
           </div>
         ))}
       </div>
-      <div className="composer">
-        <textarea
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              void send();
-            }
+      {showJumpToLatest && (
+        <button
+          type="button"
+          className="jump-to-latest"
+          onClick={() => {
+            userScrolledUp.current = false;
+            setShowJumpToLatest(false);
+            scrollToBottom(true);
           }}
-          placeholder={vi ? "Bạn sẽ nói gì?" : "What will you say?"}
-        />
-        {busy ? (
-          <button onClick={() => abort.current?.abort()} aria-label="Stop">
-            <Square />
-          </button>
-        ) : (
-          <button onClick={send} aria-label="Send">
-            <Send />
-          </button>
-        )}
+        >
+          <ArrowDown />
+          <span>{vi ? "Tin nhắn mới nhất" : "Latest message"}</span>
+        </button>
+      )}
+      <div className="composer-zone">
+        <div className="composer">
+          <textarea
+            rows={1}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void send();
+              }
+            }}
+            placeholder={vi ? "Nhập lời thoại hoặc hành động…" : "Write dialogue or an action…"}
+            aria-label={vi ? "Tin nhắn của bạn" : "Your message"}
+          />
+          {busy ? (
+            <button type="button" onClick={() => abort.current?.abort()} aria-label={vi ? "Dừng trả lời" : "Stop response"}>
+              <Square />
+            </button>
+          ) : (
+            <button type="button" onClick={send} aria-label={vi ? "Gửi tin nhắn" : "Send message"} disabled={!text.trim()}>
+              <Send />
+            </button>
+          )}
+        </div>
+        <small className="composer-shortcut">
+          {vi ? "Enter để gửi · Shift + Enter để xuống dòng" : "Enter to send · Shift + Enter for a new line"}
+        </small>
       </div>
     </div>
   );

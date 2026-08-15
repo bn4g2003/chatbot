@@ -59,6 +59,8 @@ export function BannerCarousel({
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const vi = locale === "vi";
 
@@ -85,6 +87,30 @@ export function BannerCarousel({
     );
   };
 
+  // Touch handlers for mobile swipe
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartX.current === null || touchEndX.current === null) return;
+    const diff = touchStartX.current - touchEndX.current;
+    const threshold = 40; // minimum swipe distance
+
+    if (diff > threshold) {
+      goToNext(); // Swiped left -> next slide
+    } else if (diff < -threshold) {
+      goToPrev(); // Swiped right -> previous slide
+    }
+
+    touchStartX.current = null;
+    touchEndX.current = null;
+  };
+
   if (activeBanners.length === 0) return null;
 
   return (
@@ -92,6 +118,9 @@ export function BannerCarousel({
       className="banner-carousel-container"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
       aria-label="Featured Banners"
     >
       <div className="banner-slides-track">

@@ -17,8 +17,11 @@ import { buildRoleplayPrompt, recentMessages } from "@/lib/prompt";
 import { consumeQuota, getQuota } from "@/lib/quota";
 import { requireSession } from "@/lib/session";
 import {
+  createInitialStoryState,
   directStoryTurn,
   holdDirection,
+  restoreStoryState,
+  storyStateColumns,
   storyDirectionPrompt,
   type StoryState,
 } from "@/lib/story-director";
@@ -147,7 +150,7 @@ export async function POST(
     const storedStoryState = await db.query.conversationStoryStates.findFirst({
       where: eq(conversationStoryStates.conversationId, id),
     });
-    const storyState: StoryState = storedStoryState
+    const coreStoryState: StoryState = storedStoryState
       ? {
           turnCount: storedStoryState.turnCount,
           phase: storedStoryState.phase,
@@ -164,22 +167,21 @@ export async function POST(
           calmTurns: storedStoryState.calmTurns,
           version: storedStoryState.version,
         }
-      : {
-          turnCount: 0,
-          phase: "opening",
-          tension: 10,
-          momentum: 0,
-          trust: 0,
-          affinity: 0,
-          conflict: 0,
-          currentLocation: scenario.location,
-          currentTime: scenario.time,
-          openThreads: [scenario.goal],
-          establishedFacts: [],
-          lastTransitionTurn: 0,
-          calmTurns: 0,
-          version: 1,
-        };
+      : createInitialStoryState({
+          scenarioGoal: scenario.goal,
+          scenarioDescription: scenario.description,
+          location: scenario.location,
+          time: scenario.time,
+        });
+    const latestStoryEvent = await db.query.storyEvents.findFirst({
+      where: eq(storyEvents.conversationId, id),
+      orderBy: [desc(storyEvents.createdAt)],
+    });
+    const storyState = restoreStoryState(
+      latestStoryEvent?.stateAfter,
+      coreStoryState,
+      scenario.goal,
+    );
     let storyDirection;
     try {
       storyDirection = await directStoryTurn({
@@ -214,6 +216,11 @@ export async function POST(
           for await (const delta of client.streamText({
             system: systemPrompt,
             messages: recentMessages(history),
+            temperature: 0.82,
+            maxOutputTokens: Math.min(
+              960,
+              Math.max(180, storyDirection.responsePlan.targetWords * 3),
+            ),
           })) {
             output += delta;
             controller.enqueue(event("delta", { text: delta }));
@@ -224,12 +231,13 @@ export async function POST(
             .returning({ id: messages.id });
           await db.transaction(async (tx) => {
             const after = storyDirection.after;
+            const stateColumns = storyStateColumns(after);
             await tx
               .insert(conversationStoryStates)
-              .values({ conversationId: id, ...after })
+              .values({ conversationId: id, ...stateColumns })
               .onConflictDoUpdate({
                 target: conversationStoryStates.conversationId,
-                set: { ...after, updatedAt: new Date() },
+                set: { ...stateColumns, updatedAt: new Date() },
               });
             await tx
               .insert(storyEvents)
