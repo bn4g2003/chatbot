@@ -4,11 +4,9 @@ import {
   aiModelsTable,
   aiUsageLogs,
   apiCredentials,
-  characterReviews,
   characters,
   conversations,
   messages,
-  plans,
   users,
 } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/session";
@@ -19,69 +17,61 @@ export async function GET() {
   try {
     await requireAdmin();
 
-    const [userCountRow] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(users);
-
-    const [charCountRow] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(characters);
-
-    const [pendingCountRow] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(characters)
-      .where(eq(characters.status, "pending_review"));
-
-    const [publishedCountRow] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(characters)
-      .where(eq(characters.status, "published"));
-
-    const [convCountRow] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(conversations);
-
-    const [msgCountRow] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(messages);
-
-    // AI 24h & total stats
-    const [aiStatsRow] = await db
-      .select({
-        totalCalls: sql<number>`count(*)::int`,
-        successCalls: sql<number>`count(*) filter (where ${aiUsageLogs.successful} = true)::int`,
-        totalInputTokens: sql<number>`coalesce(sum(${aiUsageLogs.inputTokens}), 0)::int`,
-        totalOutputTokens: sql<number>`coalesce(sum(${aiUsageLogs.outputTokens}), 0)::int`,
-      })
-      .from(aiUsageLogs);
-
-    // System API key status
-    const systemCred = await db.query.apiCredentials.findFirst({
-      where: and(
-        eq(apiCredentials.ownerType, "system"),
-        eq(apiCredentials.provider, "google"),
-      ),
-    });
-
-    // Default model
-    const defaultModel = await db.query.aiModelsTable.findFirst({
-      where: eq(aiModelsTable.isDefault, true),
-    });
-
-    // Recent activity: recent conversations and character reviews
-    const recentConversations = await db
-      .select({
-        id: conversations.id,
-        title: conversations.title,
-        locale: conversations.locale,
-        createdAt: conversations.createdAt,
-        userEmail: users.email,
-        userName: users.name,
-      })
-      .from(conversations)
-      .leftJoin(users, eq(users.id, conversations.userId))
-      .orderBy(desc(conversations.createdAt))
-      .limit(6);
+    const [
+      [userCountRow],
+      [charCountRow],
+      [pendingCountRow],
+      [publishedCountRow],
+      [convCountRow],
+      [msgCountRow],
+      [aiStatsRow],
+      systemCred,
+      defaultModel,
+      recentConversations,
+    ] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` }).from(users),
+      db.select({ count: sql<number>`count(*)::int` }).from(characters),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(characters)
+        .where(eq(characters.status, "pending_review")),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(characters)
+        .where(eq(characters.status, "published")),
+      db.select({ count: sql<number>`count(*)::int` }).from(conversations),
+      db.select({ count: sql<number>`count(*)::int` }).from(messages),
+      db
+        .select({
+          totalCalls: sql<number>`count(*)::int`,
+          successCalls: sql<number>`count(*) filter (where ${aiUsageLogs.successful} = true)::int`,
+          totalInputTokens: sql<number>`coalesce(sum(${aiUsageLogs.inputTokens}), 0)::int`,
+          totalOutputTokens: sql<number>`coalesce(sum(${aiUsageLogs.outputTokens}), 0)::int`,
+        })
+        .from(aiUsageLogs),
+      db.query.apiCredentials.findFirst({
+        where: and(
+          eq(apiCredentials.ownerType, "system"),
+          eq(apiCredentials.provider, "google"),
+        ),
+      }),
+      db.query.aiModelsTable.findFirst({
+        where: eq(aiModelsTable.isDefault, true),
+      }),
+      db
+        .select({
+          id: conversations.id,
+          title: conversations.title,
+          locale: conversations.locale,
+          createdAt: conversations.createdAt,
+          userEmail: users.email,
+          userName: users.name,
+        })
+        .from(conversations)
+        .leftJoin(users, eq(users.id, conversations.userId))
+        .orderBy(desc(conversations.createdAt))
+        .limit(6),
+    ]);
 
     return Response.json({
       metrics: {
@@ -105,7 +95,10 @@ export async function GET() {
       },
       recentConversations,
     });
-  } catch (e: any) {
-    return Response.json({ error: e.message || "Forbidden" }, { status: 403 });
+  } catch (error: unknown) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Forbidden" },
+      { status: 403 }
+    );
   }
 }

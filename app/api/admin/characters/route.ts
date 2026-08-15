@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, exists, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   characterImages,
@@ -32,13 +32,28 @@ export async function GET(request: Request) {
       whereConditions.push(
         or(
           ilike(characters.slug, `%${q}%`),
-          ilike(characterTranslations.name, `%${q}%`)
+          exists(
+            db
+              .select({ value: sql`1` })
+              .from(characterTranslations)
+              .where(
+                and(
+                  eq(characterTranslations.characterId, characters.id),
+                  ilike(characterTranslations.name, `%${q}%`)
+                )
+              )
+          )
         )
       );
     }
 
     if (status && status !== "all" && ["draft", "pending_review", "published", "rejected", "archived"].includes(status)) {
-      whereConditions.push(eq(characters.status, status as any));
+      whereConditions.push(
+        eq(
+          characters.status,
+          status as "draft" | "pending_review" | "published" | "rejected" | "archived"
+        )
+      );
     }
 
     if (featured === "true") {
@@ -47,98 +62,90 @@ export async function GET(request: Request) {
 
     const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
 
-    const [totalRow] = await db
-      .select({ count: sql<number>`count(distinct ${characters.id})::int` })
-      .from(characters)
-      .leftJoin(characterTranslations, eq(characterTranslations.characterId, characters.id))
-      .where(whereClause);
+    const [[totalRow], characterRows] = await Promise.all([
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(characters)
+        .where(whereClause),
+      db
+        .select({
+          id: characters.id,
+          slug: characters.slug,
+          status: characters.status,
+          rating: characters.rating,
+          featured: characters.featured,
+          originalLocale: characters.originalLocale,
+          publishedAt: characters.publishedAt,
+          createdAt: characters.createdAt,
+          ownerId: characters.ownerId,
+          ownerName: users.name,
+          ownerEmail: users.email,
+          views: characterStats.views,
+          chats: characterStats.chats,
+          likes: characterStats.likes,
+        })
+        .from(characters)
+        .innerJoin(users, eq(users.id, characters.ownerId))
+        .leftJoin(characterStats, eq(characterStats.characterId, characters.id))
+        .where(whereClause)
+        .orderBy(desc(characters.createdAt))
+        .limit(limit)
+        .offset(offset),
+    ]);
 
-    const characterRows = await db
-      .select({
-        id: characters.id,
-        slug: characters.slug,
-        status: characters.status,
-        rating: characters.rating,
-        featured: characters.featured,
-        originalLocale: characters.originalLocale,
-        publishedAt: characters.publishedAt,
-        createdAt: characters.createdAt,
-        ownerId: characters.ownerId,
-        ownerName: users.name,
-        ownerEmail: users.email,
-        views: characterStats.views,
-        chats: characterStats.chats,
-        likes: characterStats.likes,
-      })
-      .from(characters)
-      .innerJoin(users, eq(users.id, characters.ownerId))
-      .leftJoin(characterStats, eq(characterStats.characterId, characters.id))
-      .where(whereClause)
-      .groupBy(
-        characters.id,
-        users.id,
-        users.name,
-        users.email,
-        characterStats.views,
-        characterStats.chats,
-        characterStats.likes
-      )
-      .orderBy(desc(characters.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    // Populate translations, images, persona preview, scenarios count
-    const enrichedCharacters = await Promise.all(
-      characterRows.map(async (char) => {
-        const translations = await db
-          .select()
-          .from(characterTranslations)
-          .where(eq(characterTranslations.characterId, char.id));
-
-        const images = await db
-          .select()
-          .from(characterImages)
-          .where(eq(characterImages.characterId, char.id));
-
-        const persona = await db.query.characterPersonas.findFirst({
-          where: eq(characterPersonas.characterId, char.id),
-        });
-
-        const scenarios = await db
-          .select()
-          .from(characterScenarios)
-          .where(eq(characterScenarios.characterId, char.id));
-
-        const localizedScenarios = await Promise.all(
-          scenarios.map(async (sc) => {
-            const scTrans = await db
+    const characterIds = characterRows.map((character) => character.id);
+    const [translationRows, imageRows, personaRows, scenarioRows, reviewRows] =
+      characterIds.length > 0
+        ? await Promise.all([
+            db
               .select()
-              .from(scenarioTranslations)
-              .where(eq(scenarioTranslations.scenarioId, sc.id));
-            return {
-              ...sc,
-              translations: scTrans,
-            };
-          })
-        );
+              .from(characterTranslations)
+              .where(inArray(characterTranslations.characterId, characterIds)),
+            db
+              .select()
+              .from(characterImages)
+              .where(inArray(characterImages.characterId, characterIds)),
+            db
+              .select()
+              .from(characterPersonas)
+              .where(inArray(characterPersonas.characterId, characterIds)),
+            db
+              .select()
+              .from(characterScenarios)
+              .where(inArray(characterScenarios.characterId, characterIds)),
+            db
+              .select()
+              .from(characterReviews)
+              .where(inArray(characterReviews.characterId, characterIds))
+              .orderBy(desc(characterReviews.createdAt)),
+          ])
+        : [[], [], [], [], []];
 
-        const reviews = await db
+    const scenarioIds = scenarioRows.map((scenario) => scenario.id);
+    const scenarioTranslationRows = scenarioIds.length > 0
+      ? await db
           .select()
-          .from(characterReviews)
-          .where(eq(characterReviews.characterId, char.id))
-          .orderBy(desc(characterReviews.createdAt))
-          .limit(3);
+          .from(scenarioTranslations)
+          .where(inArray(scenarioTranslations.scenarioId, scenarioIds))
+      : [];
 
-        return {
-          ...char,
-          translations,
-          images,
-          persona,
-          scenarios: localizedScenarios,
-          reviews,
-        };
-      })
-    );
+    const enrichedCharacters = characterRows.map((character) => ({
+      ...character,
+      translations: translationRows.filter((row) => row.characterId === character.id),
+      images: imageRows.filter((row) => row.characterId === character.id),
+      persona: personaRows.find((row) => row.characterId === character.id) ?? null,
+      scenarios: scenarioRows
+        .filter((scenario) => scenario.characterId === character.id)
+        .map((scenario) => ({
+          ...scenario,
+          translations: scenarioTranslationRows.filter(
+            (translation) => translation.scenarioId === scenario.id
+          ),
+        })),
+      reviews: reviewRows
+        .filter((review) => review.characterId === character.id)
+        .slice(0, 3),
+    }));
 
     return Response.json({
       characters: enrichedCharacters,
@@ -149,7 +156,10 @@ export async function GET(request: Request) {
         totalPages: Math.ceil((totalRow?.count ?? 0) / limit),
       },
     });
-  } catch (e: any) {
-    return Response.json({ error: e.message || "Forbidden" }, { status: 403 });
+  } catch (error: unknown) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Forbidden" },
+      { status: 403 }
+    );
   }
 }

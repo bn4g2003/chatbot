@@ -1,12 +1,22 @@
 import { asc, eq } from "drizzle-orm";
 import { ArrowRight, Compass, Flame, Search } from "lucide-react";
+import { unstable_cache } from "next/cache";
 import { BannerCarousel, BannerItem } from "@/components/banner-carousel";
 import { CharacterCard } from "@/components/character-card";
 import { listCharacters } from "@/lib/characters";
 import { db } from "@/lib/db";
 import { banners } from "@/lib/db/schema";
 
-export const dynamic = "force-dynamic";
+const getActiveBanners = unstable_cache(
+  () =>
+    db
+      .select()
+      .from(banners)
+      .where(eq(banners.active, true))
+      .orderBy(asc(banners.sortOrder)),
+  ["active-banners"],
+  { revalidate: 60, tags: ["banners"] }
+);
 
 export default async function HomePage({
   params,
@@ -25,11 +35,7 @@ export default async function HomePage({
       listCharacters(locale, { q: query, sort: "trending", limit: 8 }),
       listCharacters(locale, { sort: "new", limit: 8 }),
       listCharacters(locale, { sort: "views", limit: 8 }),
-      db
-        .select()
-        .from(banners)
-        .where(eq(banners.active, true))
-        .orderBy(asc(banners.sortOrder)),
+      getActiveBanners(),
     ]);
     trending = trendingRes;
     newest = newestRes;

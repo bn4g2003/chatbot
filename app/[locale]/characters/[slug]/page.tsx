@@ -6,19 +6,31 @@ import {
   getRecommendedCharacters,
   getTrendingCharacters,
 } from "@/lib/characters";
+import { db } from "@/lib/db";
+import { characters } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
+
+export async function generateStaticParams() {
+  return db
+    .select({ slug: characters.slug })
+    .from(characters)
+    .where(eq(characters.status, "published"));
+}
 
 export default async function CharacterPreviewPage({
   params,
 }: PageProps<"/[locale]/characters/[slug]">) {
   const { locale, slug } = await params;
 
-  const character = await getCharacter(slug, locale);
+  const characterPromise = getCharacter(slug, locale);
+  const trendingPromise = getTrendingCharacters(locale, 8);
+  const character = await characterPromise;
   if (!character) notFound();
 
   const [trendingCharacters, recommendedCharacters] = await Promise.all([
-    getTrendingCharacters(locale, 8),
+    trendingPromise,
     getRecommendedCharacters(character.id, locale, 5),
   ]);
 

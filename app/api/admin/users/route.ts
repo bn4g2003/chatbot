@@ -39,63 +39,68 @@ export async function GET(request: Request) {
 
     const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
 
-    const [totalRow] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(users)
-      .where(whereClause);
+    const [[totalRow], userRows] = await Promise.all([
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(users)
+        .where(whereClause),
+      db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          image: users.image,
+          role: users.role,
+          banned: users.banned,
+          createdAt: users.createdAt,
+          planName: plans.name,
+          planSlug: plans.slug,
+          planId: plans.id,
+          characterCount: sql<number>`(
+            select count(*)::int from ${characters}
+            where ${characters.ownerId} = ${users.id}
+          )`,
+          conversationCount: sql<number>`(
+            select count(*)::int from ${conversations}
+            where ${conversations.userId} = ${users.id}
+          )`,
+          quotaAllowance: sql<number | null>`(
+            select ${quotaPeriods.allowance} from ${quotaPeriods}
+            where ${quotaPeriods.userId} = ${users.id}
+            order by ${quotaPeriods.periodStart} desc limit 1
+          )`,
+          quotaUsed: sql<number | null>`(
+            select ${quotaPeriods.used} from ${quotaPeriods}
+            where ${quotaPeriods.userId} = ${users.id}
+            order by ${quotaPeriods.periodStart} desc limit 1
+          )`,
+          quotaPeriodEnd: sql<Date | null>`(
+            select ${quotaPeriods.periodEnd} from ${quotaPeriods}
+            where ${quotaPeriods.userId} = ${users.id}
+            order by ${quotaPeriods.periodStart} desc limit 1
+          )`,
+        })
+        .from(users)
+        .leftJoin(userEntitlements, eq(userEntitlements.userId, users.id))
+        .leftJoin(plans, eq(plans.id, userEntitlements.planId))
+        .where(whereClause)
+        .orderBy(desc(users.createdAt))
+        .limit(limit)
+        .offset(offset),
+    ]);
 
-    const userRows = await db
-      .select({
-        id: users.id,
-        name: users.name,
-        email: users.email,
-        image: users.image,
-        role: users.role,
-        banned: users.banned,
-        createdAt: users.createdAt,
-        planName: plans.name,
-        planSlug: plans.slug,
-        planId: plans.id,
-      })
-      .from(users)
-      .leftJoin(userEntitlements, eq(userEntitlements.userId, users.id))
-      .leftJoin(plans, eq(plans.id, userEntitlements.planId))
-      .where(whereClause)
-      .orderBy(desc(users.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    // Get character count and conversation count for each user
-    const usersWithStats = await Promise.all(
-      userRows.map(async (u) => {
-        const [charCount] = await db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(characters)
-          .where(eq(characters.ownerId, u.id));
-
-        const [convCount] = await db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(conversations)
-          .where(eq(conversations.userId, u.id));
-
-        const currentQuota = await db.query.quotaPeriods.findFirst({
-          where: eq(quotaPeriods.userId, u.id),
-          orderBy: desc(quotaPeriods.periodStart),
-        });
-
-        return {
-          ...u,
-          characterCount: charCount?.count ?? 0,
-          conversationCount: convCount?.count ?? 0,
-          quota: currentQuota
+    const usersWithStats = userRows.map(
+      ({ quotaAllowance, quotaUsed, quotaPeriodEnd, ...user }) => ({
+        ...user,
+        quota:
+          quotaAllowance !== null && quotaUsed !== null && quotaPeriodEnd
             ? {
-                allowance: currentQuota.allowance,
-                used: currentQuota.used,
-                periodEnd: currentQuota.periodEnd,
+                allowance: quotaAllowance,
+                used: quotaUsed,
+                periodEnd: quotaPeriodEnd,
               }
             : null,
-        };
-      })
+      }),
     );
 
     return Response.json({
@@ -107,7 +112,10 @@ export async function GET(request: Request) {
         totalPages: Math.ceil((totalRow?.count ?? 0) / limit),
       },
     });
-  } catch (e: any) {
-    return Response.json({ error: e.message || "Forbidden" }, { status: 403 });
+  } catch (error: unknown) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Forbidden" },
+      { status: 403 }
+    );
   }
 }

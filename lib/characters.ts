@@ -1,6 +1,7 @@
 import "server-only";
-import { and, asc, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { unstable_cache } from "next/cache";
 import { db } from "./db";
 import {
   categories,
@@ -17,7 +18,7 @@ import {
   users,
 } from "./db/schema";
 
-export async function listCharacters(
+async function listCharactersUncached(
   locale: string,
   options: {
     q?: string;
@@ -87,7 +88,13 @@ export async function listCharacters(
   return rows;
 }
 
-export async function getCharacter(slug: string, locale: string) {
+export const listCharacters = unstable_cache(
+  listCharactersUncached,
+  ["public-character-list"],
+  { revalidate: 60, tags: ["public-characters"] },
+);
+
+async function getCharacterUncached(slug: string, locale: string) {
   const [base] = await db
     .select({
       id: characters.id,
@@ -105,103 +112,109 @@ export async function getCharacter(slug: string, locale: string) {
 
   if (!base) return null;
 
-  const translationRows = await db
-    .select()
-    .from(characterTranslations)
-    .where(eq(characterTranslations.characterId, base.id));
+  const [
+    translationRows,
+    personaRows,
+    images,
+    scenarios,
+    stats,
+    categoryRows,
+    comments,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(characterTranslations)
+      .where(eq(characterTranslations.characterId, base.id)),
+    db
+      .select()
+      .from(characterPersonas)
+      .where(eq(characterPersonas.characterId, base.id))
+      .limit(1),
+    db
+      .select()
+      .from(characterImages)
+      .where(eq(characterImages.characterId, base.id))
+      .orderBy(asc(characterImages.sortOrder)),
+    db
+      .select({
+        id: characterScenarios.id,
+        sortOrder: characterScenarios.sortOrder,
+      })
+      .from(characterScenarios)
+      .where(
+        and(
+          eq(characterScenarios.characterId, base.id),
+          eq(characterScenarios.active, true),
+        ),
+      )
+      .orderBy(asc(characterScenarios.sortOrder)),
+    db.query.characterStats.findFirst({
+      where: eq(characterStats.characterId, base.id),
+    }),
+    db
+      .select({
+        id: categories.id,
+        slug: categories.slug,
+        name: categoryTranslations.name,
+      })
+      .from(characterCategories)
+      .innerJoin(categories, eq(categories.id, characterCategories.categoryId))
+      .leftJoin(
+        categoryTranslations,
+        and(
+          eq(categoryTranslations.categoryId, categories.id),
+          eq(categoryTranslations.locale, locale),
+        ),
+      )
+      .where(eq(characterCategories.characterId, base.id)),
+    db
+      .select({
+        id: characterComments.id,
+        content: characterComments.content,
+        rating: characterComments.rating,
+        likesCount: characterComments.likesCount,
+        createdAt: characterComments.createdAt,
+        userName: users.name,
+        userImage: users.image,
+        userRole: users.role,
+      })
+      .from(characterComments)
+      .innerJoin(users, eq(users.id, characterComments.userId))
+      .where(eq(characterComments.characterId, base.id))
+      .orderBy(desc(characterComments.createdAt))
+      .limit(20),
+  ]);
 
   const translation =
     translationRows.find((x) => x.locale === locale) ??
     translationRows.find((x) => x.locale === base.originalLocale) ??
     translationRows[0];
 
-  const persona = await db
-    .select()
-    .from(characterPersonas)
-    .where(eq(characterPersonas.characterId, base.id))
-    .limit(1);
-
-  const images = await db
-    .select()
-    .from(characterImages)
-    .where(eq(characterImages.characterId, base.id))
-    .orderBy(asc(characterImages.sortOrder));
-
-  const scenarios = await db
-    .select({
-      id: characterScenarios.id,
-      sortOrder: characterScenarios.sortOrder,
-    })
-    .from(characterScenarios)
-    .where(
-      and(
-        eq(characterScenarios.characterId, base.id),
-        eq(characterScenarios.active, true),
-      ),
-    )
-    .orderBy(asc(characterScenarios.sortOrder));
-
-  const localizedScenarios = await Promise.all(
-    scenarios.map(async (scenario) => {
-      const rows = await db
+  const scenarioTranslationRows = scenarios.length
+    ? await db
         .select()
         .from(scenarioTranslations)
-        .where(eq(scenarioTranslations.scenarioId, scenario.id));
-      return {
-        ...scenario,
-        translation:
-          rows.find((x) => x.locale === locale) ??
-          rows.find((x) => x.locale === base.originalLocale) ??
-          rows[0],
-      };
-    }),
-  );
+        .where(inArray(scenarioTranslations.scenarioId, scenarios.map((x) => x.id)))
+    : [];
 
-  const stats = await db.query.characterStats.findFirst({
-    where: eq(characterStats.characterId, base.id),
+  const localizedScenarios = scenarios.map((scenario) => {
+    const rows = scenarioTranslationRows.filter(
+      (row) => row.scenarioId === scenario.id,
+    );
+    return {
+      ...scenario,
+      translation:
+        rows.find((x) => x.locale === locale) ??
+        rows.find((x) => x.locale === base.originalLocale) ??
+        rows[0],
+    };
   });
-
-  // Get categories
-  const categoryRows = await db
-    .select({
-      id: categories.id,
-      slug: categories.slug,
-      name: categoryTranslations.name,
-    })
-    .from(characterCategories)
-    .innerJoin(categories, eq(categories.id, characterCategories.categoryId))
-    .leftJoin(
-      categoryTranslations,
-      and(
-        eq(categoryTranslations.categoryId, categories.id),
-        eq(categoryTranslations.locale, locale),
-      ),
-    )
-    .where(eq(characterCategories.characterId, base.id));
-
-  // Get comments
-  const comments = await db
-    .select({
-      id: characterComments.id,
-      content: characterComments.content,
-      rating: characterComments.rating,
-      likesCount: characterComments.likesCount,
-      createdAt: characterComments.createdAt,
-      userName: users.name,
-      userImage: users.image,
-      userRole: users.role,
-    })
-    .from(characterComments)
-    .innerJoin(users, eq(users.id, characterComments.userId))
-    .where(eq(characterComments.characterId, base.id))
-    .orderBy(desc(characterComments.createdAt))
-    .limit(20);
 
   return translation
     ? {
         ...base,
         translation,
-        persona: persona[0] ?? null,
+        persona: personaRows[0] ?? null,
         images,
         scenarios: localizedScenarios.filter((x) => x.translation),
         stats,
@@ -211,7 +224,13 @@ export async function getCharacter(slug: string, locale: string) {
     : null;
 }
 
-export async function getTrendingCharacters(locale: string, limit = 8) {
+export const getCharacter = unstable_cache(
+  getCharacterUncached,
+  ["public-character-detail"],
+  { revalidate: 60, tags: ["public-characters"] },
+);
+
+async function getTrendingCharactersUncached(locale: string, limit = 8) {
   const fallback = locale === "vi" ? "en" : "vi";
   const fallbackTranslation = alias(
     characterTranslations,
@@ -254,7 +273,13 @@ export async function getTrendingCharacters(locale: string, limit = 8) {
   return rows;
 }
 
-export async function getRecommendedCharacters(
+export const getTrendingCharacters = unstable_cache(
+  getTrendingCharactersUncached,
+  ["public-trending-characters"],
+  { revalidate: 60, tags: ["public-characters"] },
+);
+
+async function getRecommendedCharactersUncached(
   currentId: string,
   locale: string,
   limit = 5,
@@ -301,6 +326,12 @@ export async function getRecommendedCharacters(
 
   return rows;
 }
+
+export const getRecommendedCharacters = unstable_cache(
+  getRecommendedCharactersUncached,
+  ["public-recommended-characters"],
+  { revalidate: 60, tags: ["public-characters"] },
+);
 
 export async function getCharacterContext(
   characterId: string,
