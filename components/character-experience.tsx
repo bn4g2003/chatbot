@@ -13,7 +13,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/lib/auth-client";
@@ -61,6 +61,7 @@ export function CharacterExperience({
   conversationId?: string;
   initialScenarioId?: string;
 }) {
+  const startingConversationRef = useRef(false);
   const { data, isPending } = useSession();
   const router = useRouter();
   const vi = locale === "vi";
@@ -157,7 +158,14 @@ export function CharacterExperience({
   }
 
   async function startConversation() {
-    if (!requireLogin() || !selectedScenario || (selectedScenario === "custom" && !scenarios[0]?.id)) return;
+    if (
+      startingConversationRef.current ||
+      !requireLogin() ||
+      !selectedScenario ||
+      (selectedScenario === "custom" && !scenarios[0]?.id)
+    )
+      return;
+    startingConversationRef.current = true;
     setBusy(true);
     setNotice("");
     try {
@@ -174,7 +182,6 @@ export function CharacterExperience({
         }),
       });
       const body = await response.json();
-      setBusy(false);
       if (response.ok) {
         setIsStartingNew(false);
         setActiveConvId(body.id);
@@ -184,8 +191,10 @@ export function CharacterExperience({
         setNotice(body.error ?? "Error creating conversation");
       }
     } catch (e: unknown) {
-      setBusy(false);
       setNotice(e instanceof Error ? e.message : "Error creating conversation");
+    } finally {
+      startingConversationRef.current = false;
+      setBusy(false);
     }
   }
 

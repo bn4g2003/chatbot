@@ -36,6 +36,13 @@
       "when": 1786853048509,
       "tag": "0004_repair_story_state_constraint",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786854726033,
+      "tag": "0005_repair_character_stats_constraint",
+      "breakpoints": true
     }
   ]
 }

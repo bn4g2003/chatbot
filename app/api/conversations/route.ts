@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { ZodError } from "zod";
 import { getCharacterContext } from "@/lib/characters";
 import { db } from "@/lib/db";
 import {
@@ -197,55 +198,57 @@ export async function POST(request: Request) {
       location: scenario.location,
       time: scenario.time,
     });
-    const [conversation] = await db
-      .insert(conversations)
-      .values({
-        userId: session.user.id,
-        characterId: input.characterId,
-        scenarioId: input.scenarioId,
-        locale: input.locale,
-        title: scenario.title,
-        customScenario: input.customScenario ?? null,
-        userPreferredName: input.userPreferredName || null,
-        preferredAddress: input.preferredAddress || null,
-      })
-      .returning();
-    await db
-      .insert(messages)
-      .values({
-        conversationId: conversation.id,
+    const conversation = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(conversations)
+        .values({
+          userId: session.user.id,
+          characterId: input.characterId,
+          scenarioId: input.scenarioId,
+          locale: input.locale,
+          title: scenario.title,
+          customScenario: input.customScenario ?? null,
+          userPreferredName: input.userPreferredName || null,
+          preferredAddress: input.preferredAddress || null,
+        })
+        .returning();
+      await tx.insert(messages).values({
+        conversationId: created.id,
         role: "assistant",
         content: scenario.openingMessage,
       });
-    await db
-      .insert(conversationStoryStates)
-      .values({
-        conversationId: conversation.id,
+      await tx.insert(conversationStoryStates).values({
+        conversationId: created.id,
         ...storyStateColumns(initialStoryState),
       });
-    await db.insert(storyEvents).values({
-      conversationId: conversation.id,
-      decision: "hold",
-      confidence: 1,
-      reason: "Initial story beat created from the selected scenario.",
-      signals: [],
-      stateBefore: initialStoryState,
-      stateAfter: initialStoryState,
+      await tx.insert(storyEvents).values({
+        conversationId: created.id,
+        decision: "hold",
+        confidence: 1,
+        reason: "Initial story beat created from the selected scenario.",
+        signals: [],
+        stateBefore: initialStoryState,
+        stateAfter: initialStoryState,
+      });
+      return created;
     });
     return Response.json({ id: conversation.id }, { status: 201 });
   } catch (error) {
+    const unauthorized =
+      error instanceof Error && error.message === "UNAUTHORIZED";
+    if (!unauthorized && !(error instanceof ZodError)) {
+      console.error("Failed to create conversation", error);
+    }
     return Response.json(
       {
-        error:
-          error instanceof Error && error.message === "UNAUTHORIZED"
-            ? "Unauthorized"
-            : "Invalid request",
+        error: unauthorized
+          ? "Unauthorized"
+          : error instanceof ZodError
+            ? "Invalid conversation settings"
+            : "Unable to create conversation",
       },
       {
-        status:
-          error instanceof Error && error.message === "UNAUTHORIZED"
-            ? 401
-            : 400,
+        status: unauthorized ? 401 : error instanceof ZodError ? 422 : 500,
       },
     );
   }

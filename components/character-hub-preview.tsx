@@ -260,7 +260,7 @@ export function CharacterHubPreview({
                 {vi ? "Lượt xem:" : "Views:"}
               </span>
               <span className="spec-value">
-                {(character.stats?.views ?? 0).toLocaleString()}
+                {(character.stats?.views ?? 0).toLocaleString(locale)}
               </span>
             </div>
 
@@ -269,7 +269,7 @@ export function CharacterHubPreview({
                 {vi ? "Lượt chat:" : "Chats:"}
               </span>
               <span className="spec-value">
-                {(character.stats?.chats ?? 0).toLocaleString()}
+                {(character.stats?.chats ?? 0).toLocaleString(locale)}
               </span>
             </div>
 

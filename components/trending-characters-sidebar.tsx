@@ -65,7 +65,7 @@ export function TrendingCharactersSidebar({
                     5.0
                   </span>
                   <span className="trending-views">
-                    {(item.views ?? 0).toLocaleString()} {vi ? "lượt xem" : "views"}
+                    {(item.views ?? 0).toLocaleString(locale)} {vi ? "lượt xem" : "views"}
                   </span>
                 </div>
               </div>

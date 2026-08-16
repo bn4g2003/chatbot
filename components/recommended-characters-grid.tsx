@@ -57,7 +57,7 @@ export function RecommendedCharactersGrid({
                   <span>5.0</span>
                 </div>
                 <span className="views-count">
-                  {(item.views ?? 0).toLocaleString()} {vi ? "lượt xem" : "views"}
+                  {(item.views ?? 0).toLocaleString(locale)} {vi ? "lượt xem" : "views"}
                 </span>
               </div>
             </div>
