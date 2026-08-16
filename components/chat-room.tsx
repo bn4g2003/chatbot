@@ -158,7 +158,9 @@ export function ChatRoom({
           ...current.slice(0, -1),
           {
             role: "assistant",
-            content: `⚠ ${error instanceof Error ? error.message : "Error"}`,
+            content: vi
+              ? "⚠ Không thể tạo phản hồi. Vui lòng thử lại."
+              : "⚠ Unable to generate a response. Please try again.",
           },
         ]);
     } finally {

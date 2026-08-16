@@ -229,19 +229,18 @@ export async function POST(
             .insert(messages)
             .values({ conversationId: id, role: "assistant", content: output })
             .returning({ id: messages.id });
-          await db.transaction(async (tx) => {
-            const after = storyDirection.after;
-            const stateColumns = storyStateColumns(after);
-            await tx
-              .insert(conversationStoryStates)
-              .values({ conversationId: id, ...stateColumns })
-              .onConflictDoUpdate({
-                target: conversationStoryStates.conversationId,
-                set: { ...stateColumns, updatedAt: new Date() },
-              });
-            await tx
-              .insert(storyEvents)
-              .values({
+          try {
+            await db.transaction(async (tx) => {
+              const after = storyDirection.after;
+              const stateColumns = storyStateColumns(after);
+              await tx
+                .insert(conversationStoryStates)
+                .values({ conversationId: id, ...stateColumns })
+                .onConflictDoUpdate({
+                  target: conversationStoryStates.conversationId,
+                  set: { ...stateColumns, updatedAt: new Date() },
+                });
+              await tx.insert(storyEvents).values({
                 conversationId: id,
                 sourceMessageId: userMessage.id,
                 decision: storyDirection.decision,
@@ -251,7 +250,10 @@ export async function POST(
                 stateBefore: storyDirection.before,
                 stateAfter: storyDirection.after,
               });
-          });
+            });
+          } catch (error) {
+            console.error("Failed to persist story state", error);
+          }
           if (history.length >= 36 && history.length % 12 === 0) {
             await db.insert(conversationMemories).values({
               conversationId: id,
@@ -282,6 +284,7 @@ export async function POST(
           controller.enqueue(event("usage", { quotaCharged: !personal }));
           controller.enqueue(event("done", { messageId: saved.id }));
         } catch (error) {
+          console.error("Message generation failed", error);
           await db.insert(aiUsageLogs).values({
             userId: session.user.id,
             conversationId: id,
@@ -292,8 +295,7 @@ export async function POST(
           });
           controller.enqueue(
             event("error", {
-              message:
-                error instanceof Error ? error.message : "Generation failed",
+              message: "Unable to generate a response. Please try again.",
             }),
           );
         } finally {
